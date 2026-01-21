@@ -24,7 +24,10 @@ export function FaceDetectionOverlay({ video, onFaceDetected, onFaceLost, alread
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [detectedFace, setDetectedFace] = useState<DetectedFace | null>(null);
   const [isModelLoading, setIsModelLoading] = useState(true);
+  
+  
   const [isUnknown, setIsUnknown] = useState(false);
+  const [isEmpty, setIsEmpty] = useState(false); 
   
   const modelRef = useRef<tmImage.CustomMobileNet | null>(null);
   const lastPredictionTime = useRef<number>(0);
@@ -84,49 +87,70 @@ export function FaceDetectionOverlay({ video, onFaceDetected, onFaceLost, alread
             }
           });
 
-          if (highestProb > CONFIDENCE_THRESHOLD && USER_DATABASE[bestClass]) {
-            if (currentMatchClass.current === bestClass) {
-              detectionStreak.current += 1;
-            } else {
-              currentMatchClass.current = bestClass;
-              detectionStreak.current = 1;
+          
+          
+          const isBackgroundClass = bestClass === "Background";
+
+          if (highestProb > CONFIDENCE_THRESHOLD) {
+            
+            
+            if (USER_DATABASE[bestClass]) {
+                setIsEmpty(false);
+                if (currentMatchClass.current === bestClass) {
+                    detectionStreak.current += 1;
+                } else {
+                    currentMatchClass.current = bestClass;
+                    detectionStreak.current = 1;
+                }
+
+                if (detectionStreak.current >= REQUIRED_STREAK) {
+                    const userData = USER_DATABASE[bestClass];
+                    const dateNow = new Date();
+
+                    const faceData: DetectedFace = {
+                        name: userData.name,
+                        position: userData.position,
+                        detectionDate: dateNow.toLocaleDateString('id-ID'),
+                        detectionTime: dateNow.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                        confidence: highestProb
+                    };
+
+                    setDetectedFace(faceData);
+                    setIsUnknown(false);
+                    onFaceDetected(faceData);
+                }
+            } 
+            
+            else if (isBackgroundClass) {
+                
+                if (currentMatchClass.current !== null) onFaceLost();
+                detectionStreak.current = 0;
+                currentMatchClass.current = null;
+                setDetectedFace(null);
+                
+                setIsUnknown(false);
+                setIsEmpty(true); 
             }
+            
+            else {
+                if (currentMatchClass.current !== null) onFaceLost();
+                detectionStreak.current = 0;
+                currentMatchClass.current = null;
+                setDetectedFace(null);
 
-            if (detectionStreak.current >= REQUIRED_STREAK) {
-              const userData = USER_DATABASE[bestClass];
-              const dateNow = new Date();
-
-              const faceData: DetectedFace = {
-                name: userData.name,
-                position: userData.position,
-                detectionDate: dateNow.toLocaleDateString('id-ID'),
-                detectionTime: dateNow.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-                confidence: highestProb
-              };
-
-              setDetectedFace(faceData);
-              setIsUnknown(false);
-              onFaceDetected(faceData);
+                setIsEmpty(false);
+                setIsUnknown(true); 
             }
 
           } else {
-            if (currentMatchClass.current !== null) {
-                onFaceLost();
-            }
-
+            
+            if (currentMatchClass.current !== null) onFaceLost();
             detectionStreak.current = 0;
             currentMatchClass.current = null;
             setDetectedFace(null);
             
-            if (highestProb > CONFIDENCE_THRESHOLD && !USER_DATABASE[bestClass]) {
-               if (bestClass !== "Class 2" && bestClass !== "Background") {
-                 setIsUnknown(true);
-               } else {
-                 setIsUnknown(false);
-               }
-            } else {
-               setIsUnknown(false);
-            }
+            setIsUnknown(false);
+            setIsEmpty(false); 
           }
         }
       }
@@ -142,10 +166,7 @@ export function FaceDetectionOverlay({ video, onFaceDetected, onFaceLost, alread
 
   return (
     <>
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 pointer-events-none"
-      />
+      <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
       
       {isModelLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-30">
@@ -159,14 +180,45 @@ export function FaceDetectionOverlay({ video, onFaceDetected, onFaceLost, alread
       {!isModelLoading && !detectedFace && (
         <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-none">
           <div className="bg-linear-to-t from-black/80 via-black/40 to-transparent pt-12 pb-6 px-6">
-            <div className="flex items-center justify-center gap-3 animate-pulse">
-              <div className={`w-2 h-2 rounded-full ${isUnknown ? 'bg-red-500' : 'bg-white/50'}`}></div>
-              <p className={`${isUnknown ? 'text-red-400' : 'text-white/80'} font-medium text-sm tracking-wide`}>
-                {isUnknown ? "Wajah Tidak Terdaftar" : "Mencari Wajah..."}
-              </p>
-              <div className={`w-2 h-2 rounded-full ${isUnknown ? 'bg-red-500' : 'bg-white/50'}`}></div>
+            
+            <div className="flex items-center justify-center gap-3 transition-all duration-300">
+              
+              {isEmpty ? (
+                 
+                 <>
+                    <div className="w-2 h-2 rounded-full bg-gray-500 animate-pulse"></div>
+                    <p className="text-gray-400 font-medium text-sm tracking-wide">
+                        Menunggu objek...
+                    </p>
+                    <div className="w-2 h-2 rounded-full bg-gray-500 animate-pulse"></div>
+                 </>
+              ) : isUnknown ? (
+                 
+                 <>
+                    <div className="w-2 h-2 rounded-full bg-red-500 animate-bounce"></div>
+                    <p className="text-red-400 font-bold text-sm tracking-wide">
+                        Wajah Tidak Terdaftar!
+                    </p>
+                    <div className="w-2 h-2 rounded-full bg-red-500 animate-bounce"></div>
+                 </>
+              ) : (
+                 
+                 <div className="flex items-center gap-3 animate-pulse">
+                    <div className="w-2 h-2 rounded-full bg-white/50"></div>
+                    <p className="text-white/80 font-medium text-sm tracking-wide">
+                        Mencari Wajah...
+                    </p>
+                    <div className="w-2 h-2 rounded-full bg-white/50"></div>
+                 </div>
+              )}
+
             </div>
-            <div className={`mt-4 h-0.5 w-full bg-linear-to-r from-transparent ${isUnknown ? 'via-red-500/50' : 'via-orange-500/50'} to-transparent`}></div>
+
+            <div className={`mt-4 h-0.5 w-full bg-linear-to-r from-transparent 
+                ${isEmpty ? 'via-gray-600/30' : isUnknown ? 'via-red-500/50' : 'via-orange-500/50'} 
+                to-transparent transition-colors duration-500`}>
+            </div>
+
           </div>
         </div>
       )}

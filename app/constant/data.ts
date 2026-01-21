@@ -82,4 +82,4 @@ export const USER_DATABASE: Record<string, UserData> = {
   },
 };
 
-export const TM_MODEL_URL = process.env.NEXT_PUBLIC_TM_MODEL_URL;
+export const TM_MODEL_URL = '/my-model/';
